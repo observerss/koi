@@ -14,7 +14,7 @@ from koi import __aliyun_version__
 
 
 def quote(s):
-    r = urllib.parse.quote(str(s))
+    r = urllib.parse.quote_plus(str(s))
     return r.replace('+', '%20').replace('*', '%2A').replace('%7E', '~')
 
 
@@ -25,9 +25,12 @@ class Client(object):
         self.access_key_id = access_key_id or os.getenv('ALIYUN_ACCESS_KEY_ID')
         self.access_key_secret = access_key_secret or \
             os.getenv('ALIYUN_ACCESS_KEY_SECRET')
+        assert self.access_key_id and self.access_key_secret, \
+            'You must specify ACCESS_KEY_ID and ACCESS_KEY_SECRET'
         self.api_url = 'https://ecs.aliyuncs.com/'
         self.nonce = None
         self.session = requests.Session()
+        self.session.mount(self.api_url, requests.adapters.HTTPAdapter(max_retries=5))
 
     def reset_nonce(self):
         self.nonce = str(random.randint(1e14, 1e15-1))
@@ -51,7 +54,7 @@ class Client(object):
                                          to_sign.encode('utf-8'),
                                          hashlib.sha1).digest()).strip()
         params['Signature'] = sign
-        r = self.session.get(self.api_url, params=params)
+        r = self.session.get(self.api_url, params=params, timeout=(3, 7))
         if r.status_code == 200:
             return r.json()
         else:

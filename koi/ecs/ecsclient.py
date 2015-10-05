@@ -54,6 +54,25 @@ class ECSClient(Client):
     def delete_instance(self, instance_id):
         return self.request('DeleteInstance', {'InstanceId': instance_id})
 
+    def modify_instance_attribute(self, instance_id, 
+                                  instance_name=None, 
+                                  description=None,
+                                  password=None, 
+                                  hostname=None):
+        data = {}
+        if instance_name:
+            data['InstanceName'] = instance_name
+        if description:
+            data['Description'] = description
+        if password:
+            data['Password'] = password
+        if hostname:
+            data['HostName'] = hostname
+        if not data:
+            raise ValueError('you must specifiy at least one of changed attributes')
+        data['InstanceId'] = instance_id
+        return self.request('ModifyInstanceAttribute', data)
+
     def describe_instances(self, region_id, page=1, pagesize=100,
                            instance_ids=None, 
                            image_id=None, 
@@ -72,10 +91,23 @@ class ECSClient(Client):
             data['Status'] = status
         return self.request('DescribeInstances', data)
 
-    def describe_images(self, region_id, image_name=None):
-        data = {'RegionId': region_id}
+    def describe_images(self, region_id, 
+                        image_name=None,
+                        image_id=None,
+                        snapshot_id=None,
+                        owner=None,
+                        page=1, pagesize=100):
+        data = {'RegionId': region_id,
+                'PageNumber': page,
+                'PageSize': pagesize}
         if image_name:
             data['ImageName'] = image_name
+        if image_id:
+            data['ImageId'] = image_id
+        if snapshot_id:
+            data['SnapshotId'] = snapshot_id
+        if owner in ['system', 'self', 'others', 'marketplace']:
+            data['ImageOwnerAlias'] = owner
         return self.request('DescribeImages', data)
 
     def allocate_public_ip_address(self, instance_id):
@@ -97,6 +129,73 @@ class ECSClient(Client):
                              'SecurityGroupId': security_group_id,
                              'NicType': nic_type})
 
+    def create_security_group(self, region_id, 
+                              security_group_name=None,
+                              description=None,
+                              vpc_id=None):
+        data = {'RegionId': region_id}
+        if security_group_name:
+            data['SecurityGroupName'] = security_group_name,
+        if description:
+            data['Description'] = description
+        if vpc_id:
+            data['VpcId'] = vpc_id
+        return self.request('CreateSecurityGroup', data)
+
+    def authorize_security_group(self, region_id, security_group_id,
+                                 ip_protocol='all',
+                                 port_range='-1/-1',
+                                 source_group_id=None,
+                                 source_group_owner=None,
+                                 source_cidr_ip='0.0.0.0/0',
+                                 policy='accept',
+                                 priority=100,
+                                 nic_type='internet'):
+        assert ip_protocol in ['tcp', 'udp', 'icmp', 'gre', 'all']
+        assert policy in ['accept', 'drop']
+        assert nic_type in ['internet', 'intranet']
+        data = {
+            'RegionId': region_id,
+            'SecurityGroupId': security_group_id,
+            'IpProtocol': ip_protocol,
+            'PortRange': port_range,
+            'SourceCidrIp': source_cidr_ip,
+            'Policy': policy,
+            'Priority': priority,
+            'NicType': nic_type}
+        if source_group_id:
+            data['SourceGroupId'] = source_group_id
+        if source_group_owner:
+            data['SourceGroupOwner'] = source_group_owner
+        return self.request('AuthorizeSecurityGroup', data)
+
+    def authorize_security_group_egress(self, region_id, security_group_id,
+                                        ip_protocol='all',
+                                        port_range='-1/-1',
+                                        dest_group_id=None,
+                                        dest_group_owner=None,
+                                        dest_cidr_ip='0.0.0.0/0',
+                                        policy='accept',
+                                        priority=100,
+                                        nic_type='internet'):
+        assert ip_protocol in ['tcp', 'udp', 'icmp', 'gre', 'all']
+        assert policy in ['accept', 'drop']
+        assert nic_type in ['internet', 'intranet']
+        data = {
+            'RegionId': region_id,
+            'SecurityGroupId': security_group_id,
+            'IpProtocol': ip_protocol,
+            'PortRange': port_range,
+            'DestCidrIp': dest_cidr_ip,
+            'Policy': policy,
+            'Priority': priority,
+            'NicType': nic_type}
+        if dest_group_id:
+            data['DestGroupId'] = dest_group_id
+        if dest_group_owner:
+            data['DestGroupOwner'] = dest_group_owner
+        return self.request('AuthorizeSecurityGroupEgress', data)
+
     def describe_security_groups(self, region_id):
         return self.request('DescribeSecurityGroups', {'RegionId': region_id})
 
@@ -106,13 +205,27 @@ class ECSClient(Client):
     def describe_zones(self, region_id):
         return self.request('DescribeZones', {'RegionId': region_id})
 
-    # diy methods
+    # below are sugar methods
     def default_security_group_id(self, region_id):
+        """ find a security group that allows everything """
+        # First we look for system created security group, which allows all.
+        # If you have created one or more instances in web console,
+        # Aliyun will then create one for you automatically
         r = self.describe_security_groups(region_id)
-        return r['SecurityGroups']['SecurityGroup'][0]['SecurityGroupId']
+        sgs = r['SecurityGroups']['SecurityGroup']
+        for sg in sgs:
+            if sg['Description'] == 'System created security group.':
+                return sg['SecurityGroupId']
 
-    def run_instances(region_id, image_id, instance_type, num_instances=1):
-        """ create and start instances in batch """
+        # No "system created" sg, let's fake one
+        r = self.create_security_group(region_id, description='System created security group.')
+        security_group_id = r['SecurityGroupId']
+        self.authorize_security_group(region_id, security_group_id)
+        self.authorize_security_group_egress(region_id, security_group_id)
+        return security_group_id
+
+    def run_instances(self, region_id, image_id, instance_type, num_instances=1):
+        """ create and start public facing instances in batch """
         instance_ids = []
         for _ in range(num_instances):
             r = self.create_instance(region_id, image_id, instance_type) 
@@ -122,6 +235,7 @@ class ECSClient(Client):
         return instance_ids
 
     def release_instances(self, region_id, instance_ids):
+        """ stop and delete instances """
         while True:
             r = self.describe_instances(region_id, instance_ids=instance_ids)
             instances = r['Instances']['Instance']
