@@ -15,7 +15,7 @@ class ECSClient(Client):
                         security_group_id=None,
                         instance_name=None,
                         description=None,
-                        internet_charge_type='PayByBandwidth',
+                        internet_charge_type='PayByTraffic',
                         internet_max_bandwidth=(200, 100)
                         ):
         data = {
