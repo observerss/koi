@@ -30,12 +30,14 @@ class Client(object):
         self.api_url = 'https://ecs.aliyuncs.com/'
         self.nonce = None
         self.session = requests.Session()
-        self.session.mount(self.api_url, requests.adapters.HTTPAdapter(max_retries=5))
+        # self.session.mount(self.api_url, requests.adapters.HTTPAdapter(max_retries=5))
 
     def reset_nonce(self):
         self.nonce = str(random.randint(1e14, 1e15-1))
 
-    def request(self, action, data={}):
+    def request(self, action, data={}, retry=0):
+        if retry > 5:
+            raise ValueError('重复请求次数超过5次, 请检查网络连接')
         self.reset_nonce()
         params = {
             'Action': action,
@@ -54,7 +56,10 @@ class Client(object):
                                          to_sign.encode('utf-8'),
                                          hashlib.sha1).digest()).strip()
         params['Signature'] = sign
-        r = self.session.get(self.api_url, params=params, timeout=(3, 7))
+        try:
+            r = self.session.get(self.api_url, params=params, timeout=(3, 7))
+        except:
+            return self.request(action, data, retry+1)
         if r.status_code == 200:
             return r.json()
         else:
