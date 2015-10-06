@@ -12,7 +12,7 @@ setup(
     url='https://github.com/observerss/koi',
     author='Jingchao Hu(observerss)',
     author_email='jingchaohu@gmail.com',
-    packages=['koi'],
+    packages=['koi', 'koi.core', 'koi.ecs'],
     package_data={'': ['LICENSE']},
     license=open('LICENSE').read(),
     install_requires=[
