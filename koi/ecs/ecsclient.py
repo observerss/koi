@@ -76,8 +76,10 @@ class ECSClient(Client):
     def describe_instances(self, region_id, page=1, pagesize=100,
                            instance_ids=None, 
                            image_id=None, 
+                           charge_type=None,
                            status=None):
         """
+        :param charge_type: PrePaid/PostPaid
         :param status: Running/Starting/Stopping/Stopped
         """
         data = {'RegionId': region_id,
@@ -89,6 +91,8 @@ class ECSClient(Client):
             data['ImageId'] = image_id
         if status:
             data['Status'] = status
+        if charge_type:
+            data['InstanceChargeType'] = charge_type
         return self.request('DescribeInstances', data)
 
     def describe_images(self, region_id, 
