@@ -238,19 +238,18 @@ class ECSClient(Client):
             instance_ids.append(r['InstanceId'])
         return instance_ids
 
-    def release_instances(self, region_id, instance_ids):
+    def release_instances(self, region_id, instance_ids, timeout=None):
         """ stop and delete instances """
-        while True:
+        waited = 0
+        while not timeout or waited < timeout:
             r = self.describe_instances(region_id, instance_ids=instance_ids)
             instances = r['Instances']['Instance']
             if not instances:
                 break
             for i in instances:
-                if i['Status'] == 'Running':
+                if i['Status'] != 'Stopped':
                     self.stop_instance(i['InstanceId'])
                 elif i['Status'] == 'Stopped':
                     self.delete_instance(i['InstanceId'])
-                else:
-                    # just let Starting/Stopping finish
-                    pass
             time.sleep(1)
+            waited += 1
